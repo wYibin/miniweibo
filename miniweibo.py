@@ -1,8 +1,9 @@
 import time
 import sqlite3
 from flask import Flask, render_template, redirect, url_for, \
-    session, g, abort
+    session, g, abort, request, flash
 from werkzeug import generate_password_hash, check_password_hash
+from flask.ext.bootstrap import Bootstrap
 
 #configuration
 DATABASE = 'miniweibo.db'
@@ -15,7 +16,7 @@ app = Flask(__name__)
 app.config.from_object(__name__)
 app.config.from_envvar('MINIWEIBO_SETTING', silent=True)
 
-DATABASE = 'database.db'
+bootstrap = Bootstrap(app)
 
 def get_db():
     """Open a new database connection if there is none yet for the
@@ -49,8 +50,15 @@ def query_db(query, args=(), one=False):
 
 def get_user_id(username):
     """Convenience method to look up the id for a given username."""
-    rv = query_db('SELECT * FROM users WHERE username=?', [username], one=True)
+    rv = query_db('SELECT * FROM users WHERE user_name=?', [username], one=True)
     return rv[0] if rv else None
+
+@app.before_request
+def before_request():
+    g.user = None
+    if 'user_id' in session:
+        g.user = query_db('select * from users where user_id = ?',
+                          [session['user_id']], one=True)
 
 @app.route('/')
 def timeline():
@@ -82,7 +90,7 @@ def public_timeline():
 @app.route('/<username>')
 def user_timeline(username):
     """Display a users posts."""
-    profile_user = query_db('SELECT * FROM user WHERE user_name = ?',
+    profile_user = query_db('SELECT * FROM users WHERE user_name = ?',
         [username], one=True)
     if profile_user is None:
         abort(404)
@@ -94,9 +102,9 @@ def user_timeline(username):
             one=True) is not None
     query = '''
         SELECT messages.*, users.* FROM messages, users
-        WHERE users.user_id = message.user_id AND users.user_id = ?
+        WHERE users.user_id = messages.user_id AND users.user_id = ?
         ORDER BY messages.pub_time DESC LIMIT ?'''
-    messages = query_db(query, [profile_user[user_id], PER_PAGE])
+    messages = query_db(query, [profile_user['user_id'], PER_PAGE])
     return render_template('timeline.html', messages=messages,
         followed=followed, profile_user=profile_user)
 
@@ -144,7 +152,7 @@ def add_message():
         flash('Your message was recorded.')
     return redirect(url_for('timeline'))
 
-@app.route('/register')
+@app.route('/register', methods=['GET', 'POST'])
 def register():
     """Register an account"""
     if g.user:
@@ -167,9 +175,11 @@ def register():
             db.execute('''INSERT INTO users (user_name, email, pw_hash) VALUES
                 (?, ?, ?)''', [request.form['username'], request.form['email'], generate_password_hash(request.form['password'])])
             db.commit()
-            flakh('You were successfully registered and can login now')
+            flash('You were successfully registered and can login now')
             return redirect(url_for('login'))
-    return render_template('register.html', error=error)
+    if error:
+        flash(error)
+    return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -188,7 +198,9 @@ def login():
             flash('You were logged in.')
             session['user_id'] = user['user_id']
             return redirect(url_for('timeline'))
-    return render_template('login.html', error=error)
+    if error:
+        flash(error)
+    return render_template('login.html')
 
 @app.route('/logout')
 def logout():
@@ -209,3 +221,11 @@ def follow_list():
     follower = query_db('SELECT * FROM follows WHERE followed_id=?',
         [session['user_id']])
     return render_template('follow_list.html', followed=followed, follower=follower)
+
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
+
+@app.errorhandler(401)
+def unauthorized(e):
+    return render_template('401.html'), 401
