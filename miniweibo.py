@@ -3,7 +3,7 @@ import sqlite3
 from flask import Flask, render_template, redirect, url_for, \
     session, g, abort, request, flash
 from werkzeug import generate_password_hash, check_password_hash
-from flask.ext.bootstrap import Bootstrap
+from flask_bootstrap import Bootstrap
 
 #configuration
 DATABASE = 'miniweibo.db'
@@ -120,7 +120,7 @@ def follow(username):
     db.execute('''INSERT INTO follows (follower_id, followed_id)
         VALUES (?, ?)''', [session['user_id'], followed_id])
     db.commit()
-    flash('Your are now following "%s".' % username)
+    flash('You are now following "%s".' % username)
     return redirect(url_for('user_timeline', username=username))
 
 @app.route('/<username>/unfollow')
@@ -163,7 +163,7 @@ def register():
             error = 'You have to enter a username'
         elif not request.form['email'] or \
                 '@' not in request.form['email']:
-            error = 'You have to enter a valid emial address'
+            error = 'You have to enter a valid email address'
         elif not request.form['password']:
             error = 'You have to enter a password'
         elif request.form['password'] != request.form['password2']:
